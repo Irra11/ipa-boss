@@ -18,7 +18,7 @@ app.add_middleware(
 
 # FIXED CONNECTION STRING
 # If your username is "irra_admin@admin", the "@" must be changed to "%40"
-MONGO_URL = "mongodb+srv://irra_admin%40admin:IaRlmLx6xMAmVzRg@cluster0.fftupvp.mongodb.net/?appName=Cluster0"
+MONGO_URL = ""mongodb+srv://Esign:Kboy%40%404455@cluster0.4havjl6.mongodb.net/?appName=Cluster0"
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client["boss_ipa_db"]
