@@ -1,11 +1,13 @@
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
 import os
 
 app = FastAPI()
 
-# Enable CORS for your Vercel site
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,9 +15,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# This stores your apps in memory
-apps_db = []
+# MongoDB Connection
+MONGO_URL = "mongodb+srv://boraffcremix_db_user:33zxhpWWmgUWk0ce@cluster0.fftupvp.mongodb.net/?appName=Cluster0"
+client = AsyncIOMotorClient(MONGO_URL)
+db = client["boss_ipa_db"]
+collection = db["apps"]
 
+# Data Model
 class AppModel(BaseModel):
     title: str
     description: str
@@ -23,27 +29,40 @@ class AppModel(BaseModel):
     image: str
     download_url: str
 
-# 1. Test Route (Open this in your browser)
+# Helper to convert MongoDB format to JSON
+def app_helper(app_item) -> dict:
+    return {
+        "id": str(app_item["_id"]),
+        "title": app_item["title"],
+        "description": app_item["description"],
+        "tag": app_item["tag"],
+        "image": app_item["image"],
+        "download_url": app_item["download_url"],
+    }
+
 @app.get("/")
-def read_root():
-    return {"status": "Boss IPA Backend is Online!"}
+async def root():
+    return {"message": "Connected to MongoDB & Online"}
 
-# 2. Get all apps
+# 1. GET ALL APPS FROM DATABASE
 @app.get("/apps")
-def get_apps():
-    return apps_db
+async def get_apps():
+    apps = []
+    async for app_item in collection.find():
+        apps.append(app_helper(app_item))
+    return apps
 
-# 3. Add a new app
+# 2. ADD APP TO DATABASE
 @app.post("/apps")
-def add_app(app_data: AppModel):
+async def add_app(app_data: AppModel):
     new_app = app_data.dict()
-    new_app["id"] = len(apps_db) + 1
-    apps_db.append(new_app)
-    return {"message": "App added successfully", "app": new_app}
+    result = await collection.insert_one(new_app)
+    return {"message": "App added to MongoDB", "id": str(result.inserted_id)}
 
-# 4. Delete an app
+# 3. DELETE APP FROM DATABASE
 @app.delete("/apps/{app_id}")
-def delete_app(app_id: int):
-    global apps_db
-    apps_db = [a for a in apps_db if a["id"] != app_id]
-    return {"message": "Deleted"}
+async def delete_app(app_id: str):
+    delete_result = await collection.delete_one({"_id": ObjectId(app_id)})
+    if delete_result.deleted_count == 1:
+        return {"message": "App deleted"}
+    raise HTTPException(status_code=404, detail="App not found")
