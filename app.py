@@ -1,23 +1,23 @@
 import os
-from flask import Flask, render_template, request, jsonify, redirect, url_for
-from flask_cors import CORS
+from flask import Flask, render_template, request, redirect, url_for
 from pymongo import MongoClient
 from bson.objectid import ObjectId
-import uuid
 
 app = Flask(__name__)
-CORS(app) # This allows the Javascript to talk to the API
 
-# MongoDB Config
-MONGO_URI = os.environ.get("MONGO_URI", "your_mongodb_uri")
+# --- CONFIGURATION ---
+# Set MONGO_URI in Render -> Environment Variables
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb+srv://boraffcremix_db_user:33zxhpWWmgUWk0ce@cluster0.fftupvp.mongodb.net/?appName=Cluster0")
+
 client = MongoClient(MONGO_URI)
 db = client['bossipa_db']
 apps_col = db['apps']
-orders_col = db['orders'] # New collection for orders/udid
 
-# --- PAGES ---
+# --- ROUTES ---
+
 @app.route('/')
 def index():
+    # Fetch all apps from MongoDB, newest first
     all_apps = list(apps_col.find().sort('_id', -1))
     return render_template('index.html', apps=all_apps)
 
@@ -26,24 +26,6 @@ def admin():
     all_apps = list(apps_col.find().sort('_id', -1))
     return render_template('admin.html', apps=all_apps)
 
-# --- API ENDPOINTS (For your Javascript) ---
-
-@app.route('/api/create-order', methods=['POST'])
-def create_order():
-    # This is what your frontend calls
-    data = request.json
-    order_id = str(uuid.uuid4())[:8] # Generate a short order ID
-    
-    new_order = {
-        "order_id": order_id,
-        "udid": data.get('udid'),
-        "status": "pending"
-    }
-    orders_col.insert_one(new_order)
-    
-    return jsonify({"status": "success", "orderId": order_id})
-
-# --- APP MANAGEMENT ---
 @app.route('/add', methods=['POST'])
 def add_app():
     new_app = {
@@ -54,6 +36,12 @@ def add_app():
         "install_url": request.form.get('install_url')
     }
     apps_col.insert_one(new_app)
+    return redirect(url_for('admin'))
+
+@app.route('/delete/<app_id>')
+def delete_app(app_id):
+    # MongoDB uses _id which is an ObjectId
+    apps_col.delete_one({'_id': ObjectId(app_id)})
     return redirect(url_for('admin'))
 
 if __name__ == '__main__':
