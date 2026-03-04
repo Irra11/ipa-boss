@@ -16,7 +16,7 @@ app.add_middleware(
 )
 
 # MongoDB Connection
-MONGO_URL = "mongodb+srv://boraffcremix_db_user:33zxhpWWmgUWk0ce@cluster0.fftupvp.mongodb.net/?appName=Cluster0"
+MONGO_URL = "mongodb+srv://irra_admin@admin:IaRlmLx6xMAmVzRg@cluster0.fftupvp.mongodb.net/?appName=Cluster0"
 client = AsyncIOMotorClient(MONGO_URL)
 db = client["boss_ipa_db"]
 collection = db["apps"]
