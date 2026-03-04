@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import os
+import uvicorn
 
 app = FastAPI()
 
@@ -15,13 +16,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# MongoDB Connection
-MONGO_URL = "mongodb+srv://irra_admin@admin:IaRlmLx6xMAmVzRg@cluster0.fftupvp.mongodb.net/?appName=Cluster0"
+# FIXED CONNECTION STRING
+# If your username is "irra_admin@admin", the "@" must be changed to "%40"
+MONGO_URL = "mongodb+srv://irra_admin%40admin:IaRlmLx6xMAmVzRg@cluster0.fftupvp.mongodb.net/?appName=Cluster0"
+
 client = AsyncIOMotorClient(MONGO_URL)
 db = client["boss_ipa_db"]
 collection = db["apps"]
 
-# Data Model
 class AppModel(BaseModel):
     title: str
     description: str
@@ -29,40 +31,47 @@ class AppModel(BaseModel):
     image: str
     download_url: str
 
-# Helper to convert MongoDB format to JSON
 def app_helper(app_item) -> dict:
     return {
         "id": str(app_item["_id"]),
-        "title": app_item["title"],
-        "description": app_item["description"],
-        "tag": app_item["tag"],
-        "image": app_item["image"],
-        "download_url": app_item["download_url"],
+        "title": app_item.get("title", ""),
+        "description": app_item.get("description", ""),
+        "tag": app_item.get("tag", ""),
+        "image": app_item.get("image", ""),
+        "download_url": app_item.get("download_url", ""),
     }
 
 @app.get("/")
 async def root():
     return {"message": "Connected to MongoDB & Online"}
 
-# 1. GET ALL APPS FROM DATABASE
 @app.get("/apps")
 async def get_apps():
     apps = []
-    async for app_item in collection.find():
-        apps.append(app_helper(app_item))
-    return apps
+    try:
+        async for app_item in collection.find():
+            apps.append(app_helper(app_item))
+        return apps
+    except Exception as e:
+        return {"error": str(e)}
 
-# 2. ADD APP TO DATABASE
 @app.post("/apps")
 async def add_app(app_data: AppModel):
     new_app = app_data.dict()
     result = await collection.insert_one(new_app)
-    return {"message": "App added to MongoDB", "id": str(result.inserted_id)}
+    return {"message": "App added", "id": str(result.inserted_id)}
 
-# 3. DELETE APP FROM DATABASE
 @app.delete("/apps/{app_id}")
 async def delete_app(app_id: str):
-    delete_result = await collection.delete_one({"_id": ObjectId(app_id)})
-    if delete_result.deleted_count == 1:
-        return {"message": "App deleted"}
-    raise HTTPException(status_code=404, detail="App not found")
+    try:
+        delete_result = await collection.delete_one({"_id": ObjectId(app_id)})
+        if delete_result.deleted_count == 1:
+            return {"message": "App deleted"}
+        raise HTTPException(status_code=404, detail="App not found")
+    except:
+        raise HTTPException(status_code=400, detail="Invalid ID format")
+
+# THIS ENSURES RENDER CAN SET THE PORT
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
