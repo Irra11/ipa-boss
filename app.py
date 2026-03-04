@@ -1,49 +1,60 @@
+from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import List
 import os
-from flask import Flask, render_template, request, redirect, url_for
-from pymongo import MongoClient
-from bson.objectid import ObjectId
 
-app = Flask(__name__)
+app = FastAPI()
 
-# --- CONFIGURATION ---
-# Set MONGO_URI in Render -> Environment Variables
-MONGO_URI = os.environ.get("MONGO_URI", "mongodb+srv://boraffcremix_db_user:33zxhpWWmgUWk0ce@cluster0.fftupvp.mongodb.net/?appName=Cluster0")
+# Enable CORS so Vercel can talk to Render
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-client = MongoClient(MONGO_URI)
-db = client['bossipa_db']
-apps_col = db['apps']
-
-# --- ROUTES ---
-
-@app.route('/')
-def index():
-    # Fetch all apps from MongoDB, newest first
-    all_apps = list(apps_col.find().sort('_id', -1))
-    return render_template('index.html', apps=all_apps)
-
-@app.route('/admin')
-def admin():
-    all_apps = list(apps_col.find().sort('_id', -1))
-    return render_template('admin.html', apps=all_apps)
-
-@app.route('/add', methods=['POST'])
-def add_app():
-    new_app = {
-        "name": request.form.get('name'),
-        "image_url": request.form.get('image_url'),
-        "description": request.form.get('description'),
-        "badge": request.form.get('badge'),
-        "install_url": request.form.get('install_url')
+# Simple Data Store (In a real app, use MongoDB or PostgreSQL)
+# Note: Render's free tier resets disk, so this is for demo. 
+# For permanent storage, connect a free MongoDB Atlas URI.
+apps_db = [
+    {
+        "id": 1,
+        "title": "YouTube Premium",
+        "description": "Premium Unlocked",
+        "tag": "PRO UNLOCKED",
+        "image": "https://play-lh.googleusercontent.com/6am0i3walYwNLc08QOOhRJttQENNGkhlKajXSERf3JnPVRQczIyxw2w3DxeMRTOSdsY=s48-rw",
+        "download_url": "https://github.com/Irra11/appname-install/releases/download/v1.0.0/YouTube-BossIPA.ipa"
     }
-    apps_col.insert_one(new_app)
-    return redirect(url_for('admin'))
+]
 
-@app.route('/delete/<app_id>')
-def delete_app(app_id):
-    # MongoDB uses _id which is an ObjectId
-    apps_col.delete_one({'_id': ObjectId(app_id)})
-    return redirect(url_for('admin'))
+class AppModel(BaseModel):
+    title: str
+    description: str
+    tag: str
+    image: str
+    download_url: str
 
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+ADMIN_PASSWORD = "1111" # Change this!
+
+@app.get("/apps")
+def get_apps():
+    return apps_db
+
+@app.post("/apps")
+def add_app(app_data: AppModel, password: str = Header(None)):
+    if password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    new_app = app_data.dict()
+    new_app["id"] = len(apps_db) + 1
+    apps_db.append(new_app)
+    return {"message": "App added successfully"}
+
+@app.delete("/apps/{app_id}")
+def delete_app(app_id: int, password: str = Header(None)):
+    if password != ADMIN_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    global apps_db
+    apps_db = [a for a in apps_db if a["id"] != app_id]
+    return {"message": "Deleted"}
