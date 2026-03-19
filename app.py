@@ -1,14 +1,12 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import MongoClient
 from bson import ObjectId
-import os
-import uvicorn
 
 app = FastAPI()
 
-# Enable CORS for Vercel
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,12 +14,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# MongoDB Connection
+# MongoDB Connection (SYNC)
 MONGO_URL = "mongodb+srv://roeunbora4455_db_user:wjEPJ4R8lJQCCT4s@cluster0.qoiwskv.mongodb.net/?appName=Cluster0"
-client = AsyncIOMotorClient(MONGO_URL)
+client = MongoClient(MONGO_URL)
 db = client["boss_ipa_db"]
 collection = db["apps"]
 
+# Model
 class AppModel(BaseModel):
     title: str
     description: str
@@ -29,6 +28,7 @@ class AppModel(BaseModel):
     image: str
     download_url: str
 
+# Helper
 def app_helper(app_item) -> dict:
     return {
         "id": str(app_item["_id"]),
@@ -39,51 +39,51 @@ def app_helper(app_item) -> dict:
         "download_url": app_item.get("download_url", ""),
     }
 
+# Root
 @app.get("/")
-async def root():
+def root():
     return {"message": "Boss IPA Backend Online"}
 
 # GET ALL APPS
 @app.get("/apps")
-async def get_apps():
+def get_apps():
     apps = []
-    async for app_item in collection.find():
+    for app_item in collection.find():
         apps.append(app_helper(app_item))
     return apps
 
 # ADD NEW APP
 @app.post("/apps")
-async def add_app(app_data: AppModel):
+def add_app(app_data: AppModel):
     new_app = app_data.dict()
-    result = await collection.insert_one(new_app)
+    result = collection.insert_one(new_app)
     return {"message": "Added", "id": str(result.inserted_id)}
 
-# UPDATE/EDIT APP
+# UPDATE APP
 @app.put("/apps/{app_id}")
-async def update_app(app_id: str, app_data: AppModel):
+def update_app(app_id: str, app_data: AppModel):
     if not ObjectId.is_valid(app_id):
         raise HTTPException(status_code=400, detail="Invalid ID")
-    
-    update_result = await collection.update_one(
-        {"_id": ObjectId(app_id)}, 
+
+    result = collection.update_one(
+        {"_id": ObjectId(app_id)},
         {"$set": app_data.dict()}
     )
-    
-    if update_result.modified_count == 1:
+
+    if result.modified_count == 1:
         return {"message": "Updated successfully"}
+
     raise HTTPException(status_code=404, detail="App not found or no changes made")
 
 # DELETE APP
 @app.delete("/apps/{app_id}")
-async def delete_app(app_id: str):
+def delete_app(app_id: str):
     if not ObjectId.is_valid(app_id):
         raise HTTPException(status_code=400, detail="Invalid ID")
-    
-    delete_result = await collection.delete_one({"_id": ObjectId(app_id)})
-    if delete_result.deleted_count == 1:
-        return {"message": "Deleted"}
-    raise HTTPException(status_code=404, detail="App not found")
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    result = collection.delete_one({"_id": ObjectId(app_id)})
+
+    if result.deleted_count == 1:
+        return {"message": "Deleted"}
+
+    raise HTTPException(status_code=404, detail="App not found")
