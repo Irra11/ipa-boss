@@ -16,17 +16,18 @@ app.add_middleware(
 )
 
 # MongoDB Connection
-# Added timeout (5000ms) so the app doesn't hang if the connection is blocked
+# serverSelectionTimeoutMS=5000 is REQUIRED so the app doesn't hang on Free Plans
 MONGO_URL = "mongodb+srv://roeunbora4455_db_user:wjEPJ4R8lJQCCT4s@cluster0.qoiwskv.mongodb.net/?appName=Cluster0"
 
 try:
+    # We use the standard MongoClient because it works best with the WSGI bridge
     client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=5000)
     db = client["boss_ipa_db"]
     collection = db["apps"]
 except Exception as e:
-    print(f"Database connection error: {e}")
+    print(f"Database connection setup error: {e}")
 
-# Model (Updated to Pydantic v2 syntax)
+# Model
 class AppModel(BaseModel):
     title: str
     description: str
@@ -45,13 +46,13 @@ def app_helper(app_item) -> dict:
         "download_url": app_item.get("download_url", ""),
     }
 
-# Root
+# Root route - This will work even on Free Accounts
 @app.get("/")
 def root():
     return {
         "message": "Boss IPA Backend Online",
         "status": "Running",
-        "note": "If /apps times out, your Free Account is blocking MongoDB Atlas."
+        "note": "If /apps shows a Database Error, your Free Account is blocking MongoDB."
     }
 
 # GET ALL APPS
@@ -59,44 +60,48 @@ def root():
 def get_apps():
     try:
         apps = []
+        # This will trigger the timeout error if on a free plan
         for app_item in collection.find():
             apps.append(app_helper(app_item))
         return apps
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database connection failed: {str(e)}")
 
 # ADD NEW APP
 @app.post("/apps")
 def add_app(app_data: AppModel):
-    new_app = app_data.model_dump() # Updated from .dict()
-    result = collection.insert_one(new_app)
-    return {"message": "Added", "id": str(result.inserted_id)}
+    try:
+        new_app = app_data.model_dump() 
+        result = collection.insert_one(new_app)
+        return {"message": "Added", "id": str(result.inserted_id)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # UPDATE APP
 @app.put("/apps/{app_id}")
 def update_app(app_id: str, app_data: AppModel):
     if not ObjectId.is_valid(app_id):
         raise HTTPException(status_code=400, detail="Invalid ID")
-
-    result = collection.update_one(
-        {"_id": ObjectId(app_id)},
-        {"$set": app_data.model_dump()} # Updated from .dict()
-    )
-
-    if result.modified_count == 1:
-        return {"message": "Updated successfully"}
-
-    raise HTTPException(status_code=404, detail="App not found or no changes made")
+    try:
+        result = collection.update_one(
+            {"_id": ObjectId(app_id)},
+            {"$set": app_data.model_dump()}
+        )
+        if result.modified_count == 1:
+            return {"message": "Updated successfully"}
+        raise HTTPException(status_code=404, detail="App not found or no changes made")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # DELETE APP
 @app.delete("/apps/{app_id}")
 def delete_app(app_id: str):
     if not ObjectId.is_valid(app_id):
         raise HTTPException(status_code=400, detail="Invalid ID")
-
-    result = collection.delete_one({"_id": ObjectId(app_id)})
-
-    if result.deleted_count == 1:
-        return {"message": "Deleted"}
-
-    raise HTTPException(status_code=404, detail="App not found")
+    try:
+        result = collection.delete_one({"_id": ObjectId(app_id)})
+        if result.deleted_count == 1:
+            return {"message": "Deleted"}
+        raise HTTPException(status_code=404, detail="App not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
