@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pymongo import MongoClient
 from bson import ObjectId
+import os
 
 app = FastAPI()
 
@@ -14,13 +15,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# MongoDB Connection (SYNC)
+# MongoDB Connection
+# Added timeout (5000ms) so the app doesn't hang if the connection is blocked
 MONGO_URL = "mongodb+srv://roeunbora4455_db_user:wjEPJ4R8lJQCCT4s@cluster0.qoiwskv.mongodb.net/?appName=Cluster0"
-client = MongoClient(MONGO_URL)
-db = client["boss_ipa_db"]
-collection = db["apps"]
 
-# Model
+try:
+    client = MongoClient(MONGO_URL, serverSelectionTimeoutMS=5000)
+    db = client["boss_ipa_db"]
+    collection = db["apps"]
+except Exception as e:
+    print(f"Database connection error: {e}")
+
+# Model (Updated to Pydantic v2 syntax)
 class AppModel(BaseModel):
     title: str
     description: str
@@ -42,20 +48,27 @@ def app_helper(app_item) -> dict:
 # Root
 @app.get("/")
 def root():
-    return {"message": "Boss IPA Backend Online"}
+    return {
+        "message": "Boss IPA Backend Online",
+        "status": "Running",
+        "note": "If /apps times out, your Free Account is blocking MongoDB Atlas."
+    }
 
 # GET ALL APPS
 @app.get("/apps")
 def get_apps():
-    apps = []
-    for app_item in collection.find():
-        apps.append(app_helper(app_item))
-    return apps
+    try:
+        apps = []
+        for app_item in collection.find():
+            apps.append(app_helper(app_item))
+        return apps
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 # ADD NEW APP
 @app.post("/apps")
 def add_app(app_data: AppModel):
-    new_app = app_data.dict()
+    new_app = app_data.model_dump() # Updated from .dict()
     result = collection.insert_one(new_app)
     return {"message": "Added", "id": str(result.inserted_id)}
 
@@ -67,7 +80,7 @@ def update_app(app_id: str, app_data: AppModel):
 
     result = collection.update_one(
         {"_id": ObjectId(app_id)},
-        {"$set": app_data.dict()}
+        {"$set": app_data.model_dump()} # Updated from .dict()
     )
 
     if result.modified_count == 1:
